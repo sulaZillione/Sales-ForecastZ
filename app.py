@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import io
 
-# Import the forecasting logic (you'll need to copy the functions from score_3.py)
+# Import the forecasting libraries
 import json
 import pandas as pd
 import numpy as np
@@ -20,10 +20,10 @@ from statsmodels.tsa.holtwinters import SimpleExpSmoothing, ExponentialSmoothing
 from statsmodels.tsa.ar_model import AutoReg
 import statsmodels.api as sm
 
-# Copy the forecasting function from score_3.py
+# Complete implementation of the original forecasting function
 def run_forecast(data):
     """
-    Modified version of the run function from score_3.py
+    Complete implementation matching the original score_3.py logic
     """
     try:
         # Load the input data (JSON format)
@@ -134,7 +134,7 @@ def run_forecast(data):
             
             return dates
 
-        # Model implementations (simplified versions of the main models)
+        # Model implementations - COMPLETE ORIGINAL LOGIC
         if Model == "AR":
             try:
                 ar_model = AutoReg(resampled_df['TransactionQty'], lags=parameter1)
@@ -154,6 +154,34 @@ def run_forecast(data):
                 best_forecast = ar_forecast
                 best_model_name = "AR"
 
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
+
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": accuracy,
+                            "MAE": mae,
+                            "Parameter1": parameter1,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
+                }
+                return output_dict
+                
             except Exception as e:
                 return {"error": f"AR Model Error: {str(e)}"}
 
@@ -176,51 +204,372 @@ def run_forecast(data):
                 best_model_name = "ES"
                 best_forecast = forecast_s
 
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
+                
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": accuracy,
+                            "MAE": mae,
+                            "Parameter1": parameter1,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
+                }
+                return output_dict
+                
             except Exception as e:
                 return {"error": f"ES Model Error: {str(e)}"}
 
-        else:  # Auto selection (simplified)
+        elif Model == "SARIMAX":
             try:
-                # Simple fallback to ES with default alpha
-                model_s = sm.tsa.ExponentialSmoothing(resampled_df['TransactionQty'], trend=None, seasonal=None, initialization_method="estimated")
-                model_results_s = model_s.fit(smoothing_level=0.3)
+                # Check if we have enough data for SARIMAX
+                if len(train_data) < max(Seasonality, 10):
+                    return {"error": f"Insufficient data for SARIMAX model. Need at least {max(Seasonality, 10)} data points."}
                 
+                sarimax_model = SARIMAX(train_data['TransactionQty'], 
+                                    order=(1, 1, 1), 
+                                    seasonal_order=(1, 1, 1, Seasonality))
+                sarimax_result = sarimax_model.fit()
+
+                # Forecast with SARIMAX
+                if len(test_data) > 0:
+                    sarimax_forecast = sarimax_result.predict(start=len(train_data), end=len(train_data) + len(test_data) - 1, typ='levels').rename('SARIMAX')
+                    accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], sarimax_forecast)
+                else:
+                    accuracy, mae = 0, 0
+                        
+                sarimax_model_s = SARIMAX(resampled_df['TransactionQty'], 
+                                    order=(1, 1, 1), 
+                                    seasonal_order=(1, 1, 1, Seasonality))
+                sarimax_result_s = sarimax_model_s.fit()
+
+                # Forecast with SARIMAX
+                sarimax_forecast_s = sarimax_result_s.predict(start=len(resampled_df), 
+                                              end=len(resampled_df) + Horizon - 1, 
+                                              typ='levels').rename('SARIMAX')
+
+                # Generate forecast dates
                 forecast_dates = generate_forecast_dates(resampled_df.index[-1], Horizon, grouping_parameter)
-                best_forecast = model_results_s.forecast(steps=Horizon)
-                best_model_name = "ES (Auto)"
-                accuracy, mae = 0, 0
 
-            except Exception as e:
-                return {"error": f"Auto Model Error: {str(e)}"}
+                best_model_name = "SARIMAX"
+                best_forecast = sarimax_forecast_s
 
-        # Create output
-        forecast_dict = [
-            {
-                "Date": date.strftime('%Y-%m-%d'),
-                "TransactionQty": max(0, int(value)),
-                "Sigma": 0
-            }
-            for date, value in zip(forecast_dates, best_forecast)
-        ]
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
 
-        output_dict = {
-            "Forecast": forecast_dict,
-            "BestModel": [
-                {
-                    "Best Model": best_model_name,
-                    "Accuracy": accuracy,
-                    "MAE": mae,
-                    "Parameter1": parameter1,
-                    "Parameter2": 0,
-                    "Parameter3": 0,
-                    "Parameter4": 0,
-                    "Parameter5": 0,
-                    "Parameter6": 0
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": accuracy,
+                            "MAE": mae,
+                            "Parameter1": 0,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
                 }
-            ],
-            "HistoricalData": resampled_df.reset_index().to_dict('records')
-        }
-        return output_dict
+                return output_dict
+                
+            except Exception as e:
+                return {"error": f"SARIMAX Model Error: {str(e)}"}
+
+        elif Model == "ETS":
+            try:
+                # Check if we have enough data for ETS
+                if len(train_data) < max(Seasonality, 10):
+                    return {"error": f"Insufficient data for ETS model. Need at least {max(Seasonality, 10)} data points."}
+                
+                ets_model = ExponentialSmoothing(train_data['TransactionQty'], 
+                                            trend='add', 
+                                            seasonal='add', 
+                                            seasonal_periods=Seasonality)
+                ets_result = ets_model.fit()
+
+                # Forecast with ETS
+                if len(test_data) > 0:
+                    ets_forecast = ets_result.predict(start=len(train_data), end=len(train_data) + len(test_data) - 1).rename('ETS')
+                    accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], ets_forecast)
+                else:
+                    accuracy, mae = 0, 0
+                        
+                ets_model_s = ExponentialSmoothing(resampled_df['TransactionQty'], 
+                                            trend='add', 
+                                            seasonal='add', 
+                                            seasonal_periods=Seasonality)
+                ets_result_s = ets_model_s.fit()
+
+                # Forecast with ETS
+                ets_forecast_s = ets_result_s.predict(start=len(resampled_df), 
+                                       end=len(resampled_df) + Horizon - 1).rename('ETS')
+
+                # Generate forecast dates
+                forecast_dates = generate_forecast_dates(resampled_df.index[-1], Horizon, grouping_parameter)
+
+                best_model_name = "ETS"
+                best_forecast = ets_forecast_s
+
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
+
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": accuracy,
+                            "MAE": mae,
+                            "Parameter1": 0,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
+                }
+                return output_dict
+                
+            except Exception as e:
+                return {"error": f"ETS Model Error: {str(e)}"}
+
+        elif Model == "STL + ARIMA":
+            try:
+                # Check if we have enough data for STL + ARIMA
+                if len(train_data) < 10:
+                    return {"error": "Insufficient data for STL + ARIMA model. Need at least 10 data points."}
+                
+                stlf = STLForecast(train_data['TransactionQty'], ARIMA, model_kwargs={"order": (1, 1, 0)})
+                stlf_result = stlf.fit()
+                
+                if len(test_data) > 0:
+                    stl_forecast = stlf_result.forecast(steps=len(test_data)).rename('STL Forecast')
+                    accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], stl_forecast)
+                else:
+                    accuracy, mae = 0, 0
+                        
+                stlf_s = STLForecast(resampled_df['TransactionQty'], ARIMA, model_kwargs={"order": (1, 1, 0)})
+                stlf_result_s = stlf_s.fit()
+                stl_forecast_s = stlf_result_s.forecast(Horizon).rename('STL Forecast')
+
+                # Generate forecast dates
+                forecast_dates = generate_forecast_dates(resampled_df.index[-1], Horizon, grouping_parameter)
+
+                best_model_name = "STL + ARIMA"
+                best_forecast = stl_forecast_s
+
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
+
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": accuracy,
+                            "MAE": mae,
+                            "Parameter1": 0,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
+                }
+                return output_dict
+                
+            except Exception as e:
+                return {"error": f"STL + ARIMA Model Error: {str(e)}"}
+
+        else:
+            # Auto model selection - COMPLETE IMPLEMENTATION
+            try:
+                models_to_try = []
+                results = {}
+                
+                # AR Model with different lags
+                lag_values = [1, 2, 3, 4, 5]
+                for lag in lag_values:
+                    try:
+                        if len(train_data) > lag:
+                            ar_model = AutoReg(train_data['TransactionQty'], lags=lag)
+                            ar_results = ar_model.fit()
+                            if len(test_data) > 0:
+                                ar_forecast = ar_results.predict(start=len(train_data), end=len(train_data) + len(test_data) - 1, dynamic=False)
+                                accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], ar_forecast)
+                                results[f'AR_{lag}'] = {'mae': mae, 'accuracy': accuracy, 'params': {'lag': lag}}
+                    except:
+                        continue
+                
+                # ES Model with different alpha values
+                alpha_values = [0.1, 0.3, 0.5, 0.7, 0.9]
+                for alpha in alpha_values:
+                    try:
+                        model = sm.tsa.ExponentialSmoothing(train_data['TransactionQty'], trend=None, seasonal=None, initialization_method="estimated")
+                        model_results = model.fit(smoothing_level=alpha)
+                        if len(test_data) > 0:
+                            forecast = model_results.forecast(steps=len(test_data))
+                            accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], forecast)
+                            results[f'ES_{alpha}'] = {'mae': mae, 'accuracy': accuracy, 'params': {'alpha': alpha}}
+                    except:
+                        continue
+
+                # SARIMAX Model (if enough data)
+                if len(train_data) >= max(Seasonality, 10):
+                    try:
+                        sarimax_model = SARIMAX(train_data['TransactionQty'], 
+                                            order=(1, 1, 1), 
+                                            seasonal_order=(1, 1, 1, Seasonality))
+                        sarimax_result = sarimax_model.fit()
+                        if len(test_data) > 0:
+                            sarimax_forecast = sarimax_result.predict(start=len(train_data), end=len(train_data) + len(test_data) - 1, typ='levels')
+                            accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], sarimax_forecast)
+                            results['SARIMAX'] = {'mae': mae, 'accuracy': accuracy, 'params': {}}
+                    except:
+                        pass
+
+                # ETS Model (if enough data)
+                if len(train_data) >= max(Seasonality, 10):
+                    try:
+                        ets_model = ExponentialSmoothing(train_data['TransactionQty'], 
+                                                    trend='add', 
+                                                    seasonal='add', 
+                                                    seasonal_periods=Seasonality)
+                        ets_result = ets_model.fit()
+                        if len(test_data) > 0:
+                            ets_forecast = ets_result.predict(start=len(train_data), end=len(train_data) + len(test_data) - 1)
+                            accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], ets_forecast)
+                            results['ETS'] = {'mae': mae, 'accuracy': accuracy, 'params': {}}
+                    except:
+                        pass
+
+                # STL + ARIMA Model (if enough data)
+                if len(train_data) >= 10:
+                    try:
+                        stlf = STLForecast(train_data['TransactionQty'], ARIMA, model_kwargs={"order": (1, 1, 0)})
+                        stlf_result = stlf.fit()
+                        if len(test_data) > 0:
+                            stl_forecast = stlf_result.forecast(steps=len(test_data))
+                            accuracy, mae = safe_accuracy_calculation(test_data['TransactionQty'], stl_forecast)
+                            results['STL+ARIMA'] = {'mae': mae, 'accuracy': accuracy, 'params': {}}
+                    except:
+                        pass
+
+                if not results:
+                    return {"error": "No models could be fitted successfully. Please check your data."}
+
+                # Find best model based on lowest MAE
+                best_model_key = min(results.keys(), key=lambda x: results[x]['mae'])
+                best_result = results[best_model_key]
+                
+                # Generate forecast using the best model
+                forecast_dates = generate_forecast_dates(resampled_df.index[-1], Horizon, grouping_parameter)
+                
+                # Refit the best model on full data and generate forecast
+                if 'AR_' in best_model_key:
+                    lag = best_result['params']['lag']
+                    ar_model_s = AutoReg(resampled_df['TransactionQty'], lags=lag)
+                    ar_results_s = ar_model_s.fit()
+                    best_forecast = ar_results_s.predict(start=len(resampled_df), end=len(resampled_df) + Horizon - 1, dynamic=False)
+                    best_model_name = "AR"
+                elif 'ES_' in best_model_key:
+                    alpha = best_result['params']['alpha']
+                    model_s = sm.tsa.ExponentialSmoothing(resampled_df['TransactionQty'], trend=None, seasonal=None, initialization_method="estimated")
+                    model_results_s = model_s.fit(smoothing_level=alpha)
+                    best_forecast = model_results_s.forecast(steps=Horizon)
+                    best_model_name = "ES"
+                elif best_model_key == 'SARIMAX':
+                    sarimax_model_s = SARIMAX(resampled_df['TransactionQty'], 
+                                        order=(1, 1, 1), 
+                                        seasonal_order=(1, 1, 1, Seasonality))
+                    sarimax_result_s = sarimax_model_s.fit()
+                    best_forecast = sarimax_result_s.predict(start=len(resampled_df), end=len(resampled_df) + Horizon - 1, typ='levels')
+                    best_model_name = "SARIMAX"
+                elif best_model_key == 'ETS':
+                    ets_model_s = ExponentialSmoothing(resampled_df['TransactionQty'], 
+                                                trend='add', 
+                                                seasonal='add', 
+                                                seasonal_periods=Seasonality)
+                    ets_result_s = ets_model_s.fit()
+                    best_forecast = ets_result_s.predict(start=len(resampled_df), end=len(resampled_df) + Horizon - 1)
+                    best_model_name = "ETS"
+                elif best_model_key == 'STL+ARIMA':
+                    stlf_s = STLForecast(resampled_df['TransactionQty'], ARIMA, model_kwargs={"order": (1, 1, 0)})
+                    stlf_result_s = stlf_s.fit()
+                    best_forecast = stlf_result_s.forecast(Horizon)
+                    best_model_name = "STL + ARIMA"
+
+                forecast_dict = [
+                    {
+                        "Date": date.strftime('%Y-%m-%d'),
+                        "TransactionQty": max(0, int(value)),
+                        "Sigma": 0
+                    }
+                    for date, value in zip(forecast_dates, best_forecast)
+                ]
+
+                output_dict = {
+                    "Forecast": forecast_dict,
+                    "BestModel": [
+                        {
+                            "Best Model": best_model_name,
+                            "Accuracy": best_result['accuracy'],
+                            "MAE": best_result['mae'],
+                            "Parameter1": 0,
+                            "Parameter2": 0,
+                            "Parameter3": 0,
+                            "Parameter4": 0,
+                            "Parameter5": 0,
+                            "Parameter6": 0
+                        }
+                    ],
+                    "HistoricalData": resampled_df.reset_index().to_dict('records')
+                }
+                return output_dict
+                
+            except Exception as e:
+                return {"error": f"Auto Model Selection Error: {str(e)}"}
 
     except Exception as e:
         return {"error": str(e)}
@@ -326,19 +675,37 @@ def main():
                 value=seasonality_options[grouping_parameter]
             )
             
+            # Complete model options matching original implementation
             model_options = ["Auto", "AR", "ES", "SARIMAX", "ETS", "STL + ARIMA"]
             selected_model = st.sidebar.selectbox("Select Model", model_options)
             
-            # Model parameters
+            # Model parameters based on selected model
             parameter1 = 0.3  # Default value
             if selected_model == "AR":
                 parameter1 = st.sidebar.number_input("AR Lag", min_value=1, max_value=10, value=1)
             elif selected_model == "ES":
                 parameter1 = st.sidebar.slider("Smoothing Level (Alpha)", 0.1, 0.9, 0.3)
+            elif selected_model == "SARIMAX":
+                st.sidebar.info("SARIMAX uses automatic parameter selection")
+            elif selected_model == "ETS":
+                st.sidebar.info("ETS uses automatic parameter selection")
+            elif selected_model == "STL + ARIMA":
+                st.sidebar.info("STL + ARIMA uses automatic parameter selection")
+            elif selected_model == "Auto":
+                st.sidebar.info("Auto mode will test all models and select the best one")
+            
+            # Model information expander
+            with st.sidebar.expander("ℹ️ Model Information"):
+                st.write("**AR**: AutoRegressive model, good for data with trends")
+                st.write("**ES**: Exponential Smoothing, simple and robust")
+                st.write("**SARIMAX**: Seasonal ARIMA, handles seasonality and trends")
+                st.write("**ETS**: Error, Trend, Seasonal decomposition")
+                st.write("**STL + ARIMA**: Seasonal-Trend decomposition with ARIMA")
+                st.write("**Auto**: Tests all models and picks the best performer")
             
             # Run forecasting button
             if st.sidebar.button("🚀 Run Forecast", type="primary"):
-                with st.spinner("Running forecast..."):
+                with st.spinner("Running forecast analysis..."):
                     
                     # Prepare data in the format expected by the forecasting function
                     forecast_data = filtered_df[['Date', 'Quantity']].copy()
@@ -385,9 +752,9 @@ def main():
                         
                         # Prepare data for visualization
                         historical_data = result.get('HistoricalData', [])
-                        forecast_data = result['Forecast']
+                        forecast_data_result = result['Forecast']
                         
-                        # Create visualization
+                        # Create comprehensive visualization
                         if historical_data:
                             hist_df = pd.DataFrame(historical_data)
                             hist_df['parameter'] = pd.to_datetime(hist_df['parameter'])
@@ -397,7 +764,7 @@ def main():
                         else:
                             hist_df = pd.DataFrame()
                         
-                        forecast_df = pd.DataFrame(forecast_data)
+                        forecast_df = pd.DataFrame(forecast_data_result)
                         forecast_df['Date'] = pd.to_datetime(forecast_df['Date'])
                         forecast_df['Type'] = 'Forecast'
                         forecast_df['Value'] = forecast_df['TransactionQty']
@@ -411,37 +778,121 @@ def main():
                         else:
                             plot_data = forecast_df[['Date', 'Value', 'Type']]
                         
-                        # Create plotly chart
-                        fig = px.line(plot_data, x='Date', y='Value', color='Type', 
-                                     title=f'Sales Forecast for {selected_item}',
-                                     labels={'Value': 'Quantity', 'Date': 'Date'})
+                        # Create enhanced plotly chart
+                        fig = go.Figure()
                         
-                        # Update traces for better visualization
-                        fig.update_traces(
-                            line=dict(width=3),
-                            selector=dict(name='Historical')
-                        )
-                        fig.update_traces(
-                            line=dict(width=3, dash='dash'),
-                            selector=dict(name='Forecast')
+                        # Add historical data if available
+                        if not hist_df.empty:
+                            fig.add_trace(go.Scatter(
+                                x=hist_df['Date'],
+                                y=hist_df['Value'],
+                                mode='lines+markers',
+                                name='Historical Data',
+                                line=dict(color='#1f77b4', width=2),
+                                marker=dict(size=4)
+                            ))
+                        
+                        # Add forecast data
+                        fig.add_trace(go.Scatter(
+                            x=forecast_df['Date'],
+                            y=forecast_df['Value'],
+                            mode='lines+markers',
+                            name='Forecast',
+                            line=dict(color='#ff7f0e', width=3, dash='dash'),
+                            marker=dict(size=6)
+                        ))
+                        
+                        # Update layout
+                        fig.update_layout(
+                            title=f'Sales Forecast for {selected_item} using {best_model["Best Model"]} Model',
+                            xaxis_title='Date',
+                            yaxis_title='Quantity',
+                            hovermode='x unified',
+                            showlegend=True,
+                            height=600
                         )
                         
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        # Display forecast table
-                        st.subheader("📋 Forecast Details")
-                        forecast_display = pd.DataFrame(forecast_data)
-                        forecast_display['Date'] = pd.to_datetime(forecast_display['Date']).dt.strftime('%Y-%m-%d')
-                        st.dataframe(forecast_display, use_container_width=True)
+                        # Display detailed results in tabs
+                        tab1, tab2, tab3 = st.tabs(["📊 Forecast Table", "📈 Historical Data", "🔧 Model Details"])
                         
-                        # Download forecast results
-                        csv = forecast_display.to_csv(index=False)
-                        st.download_button(
-                            label="📥 Download Forecast Results",
-                            data=csv,
-                            file_name=f"forecast_{selected_item}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv"
-                        )
+                        with tab1:
+                            st.subheader("Forecast Results")
+                            forecast_display = pd.DataFrame(forecast_data_result)
+                            forecast_display['Date'] = pd.to_datetime(forecast_display['Date']).dt.strftime('%Y-%m-%d')
+                            st.dataframe(forecast_display, use_container_width=True)
+                            
+                            # Summary statistics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Forecast Mean", f"{forecast_display['TransactionQty'].mean():.2f}")
+                            with col2:
+                                st.metric("Forecast Total", f"{forecast_display['TransactionQty'].sum():.0f}")
+                            with col3:
+                                st.metric("Forecast Std", f"{forecast_display['TransactionQty'].std():.2f}")
+                        
+                        with tab2:
+                            if historical_data:
+                                st.subheader("Historical Data")
+                                hist_display = pd.DataFrame(historical_data)
+                                hist_display['parameter'] = pd.to_datetime(hist_display['parameter']).dt.strftime('%Y-%m-%d')
+                                hist_display = hist_display.rename(columns={'parameter': 'Date'})
+                                st.dataframe(hist_display, use_container_width=True)
+                                
+                                # Historical statistics
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Historical Mean", f"{hist_display['TransactionQty'].mean():.2f}")
+                                with col2:
+                                    st.metric("Historical Total", f"{hist_display['TransactionQty'].sum():.0f}")
+                                with col3:
+                                    st.metric("Historical Std", f"{hist_display['TransactionQty'].std():.2f}")
+                            else:
+                                st.info("No historical data available for display")
+                        
+                        with tab3:
+                            st.subheader("Model Performance Details")
+                            model_info = pd.DataFrame([best_model])
+                            st.dataframe(model_info, use_container_width=True)
+                            
+                            # Model explanation
+                            model_name = best_model['Best Model']
+                            if model_name == "AR":
+                                st.write("**AutoRegressive (AR) Model**: Uses past values to predict future values. Good for data with trends.")
+                            elif model_name == "ES":
+                                st.write("**Exponential Smoothing (ES)**: Gives more weight to recent observations. Simple and robust for many time series.")
+                            elif model_name == "SARIMAX":
+                                st.write("**Seasonal ARIMA (SARIMAX)**: Handles both trend and seasonal patterns. Good for complex seasonal data.")
+                            elif model_name == "ETS":
+                                st.write("**Error, Trend, Seasonal (ETS)**: Decomposes the time series into error, trend, and seasonal components.")
+                            elif model_name == "STL + ARIMA":
+                                st.write("**STL + ARIMA**: Combines seasonal decomposition (STL) with ARIMA modeling for robust forecasting.")
+                        
+                        # Download options
+                        st.subheader("📥 Download Results")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Download forecast results
+                            csv_forecast = forecast_display.to_csv(index=False)
+                            st.download_button(
+                                label="Download Forecast Results",
+                                data=csv_forecast,
+                                file_name=f"forecast_{selected_item}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                        
+                        with col2:
+                            if historical_data:
+                                # Download historical data
+                                csv_historical = hist_display.to_csv(index=False)
+                                st.download_button(
+                                    label="Download Historical Data",
+                                    data=csv_historical,
+                                    file_name=f"historical_{selected_item}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                    mime="text/csv"
+                                )
             
             # Display current filtered data
             st.subheader(f"📊 Current Data for {selected_item}")
@@ -452,6 +903,7 @@ def main():
             if len(filtered_df) > 0:
                 fig_current = px.line(filtered_df, x='Date', y='Quantity', 
                                     title=f'Historical Data for {selected_item}')
+                fig_current.update_traces(line=dict(width=2))
                 st.plotly_chart(fig_current, use_container_width=True)
                 
                 # Show statistics
@@ -462,6 +914,7 @@ def main():
                     st.write(f"- Std: {filtered_df['Quantity'].std():.2f}")
                     st.write(f"- Min: {filtered_df['Quantity'].min()}")
                     st.write(f"- Max: {filtered_df['Quantity'].max()}")
+                    st.write(f"- Total: {filtered_df['Quantity'].sum()}")
                 
                 with col2:
                     st.write("**Recent Data:**")
@@ -469,6 +922,7 @@ def main():
                 
         except Exception as e:
             st.error(f"Error loading file: {str(e)}")
+            st.write("Please ensure your Excel file has the correct format with columns: ItemNumber, Date, Quantity")
     
     else:
         st.info("👆 Please upload an Excel file to get started")
@@ -480,7 +934,27 @@ def main():
             'Date': ['2023-01-01', '2023-01-02', '2023-01-03', '2023-01-01', '2023-01-02'],
             'Quantity': [23, 18, 27, 15, 20]
         }
-        st.dataframe(pd.DataFrame(example_data))
+        example_df = pd.DataFrame(example_data)
+        st.dataframe(example_df)
+        
+        # Model comparison information
+        st.subheader("🤖 Available Forecasting Models")
+        
+        models_info = {
+            'Model': ['AR (AutoRegressive)', 'ES (Exponential Smoothing)', 'SARIMAX', 'ETS', 'STL + ARIMA', 'Auto Selection'],
+            'Best For': [
+                'Data with trends and patterns',
+                'Simple, stable data',
+                'Seasonal data with trends',
+                'Complex seasonal patterns',
+                'Data with strong seasonality',
+                'Unknown data patterns'
+            ],
+            'Complexity': ['Medium', 'Low', 'High', 'High', 'High', 'Variable'],
+            'Data Requirements': ['Medium', 'Low', 'High (seasonal)', 'High (seasonal)', 'Medium', 'Variable']
+        }
+        
+        st.dataframe(pd.DataFrame(models_info), use_container_width=True)
 
 if __name__ == "__main__":
     main()
